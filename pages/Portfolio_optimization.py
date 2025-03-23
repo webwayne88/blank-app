@@ -2,8 +2,9 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
+from plotly.subplots import make_subplots
 
-st.logo("materilas/images/logo.png", size='large')
+st.logo("materials/images/logo.png", size='large')
 st.set_page_config(page_title = "Формирование и управление инвестиционным портфелем")
 
 # Данные о распределении активов
@@ -14,6 +15,12 @@ portfolio_data = {
     "Агрессивный": {"Stocks": 82, "Bonds": 16, "Short-term": 2},
     "Очень агрессивный": {"Stocks": 98, "Bonds": 0, "Short-term": 2},
 }
+
+st.subheader("Распределение активов по видам портфеля")
+with open('./materials/text/guide.md', 'r') as f:
+    markdown_string = f.read()
+st.markdown(markdown_string, unsafe_allow_html=True)
+
 
 # Input features
 with st.sidebar:

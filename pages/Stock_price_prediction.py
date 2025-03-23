@@ -3,96 +3,64 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
-import statistics
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, SimpleRNN
 
 st.set_page_config(page_title = "Stock Price Analysis", layout="wide") 
-st.logo(image="materilas/images/logo.png", size='large', icon_image="materilas/images/icon.png")
+st.logo(image="materials/images/logo.png", size='large', icon_image="materials/images/icon.png")
 
-# period = st.selectbox('Выберите период:', ['Неделя', 'Месяц', 'Квартал', 'Год', 'Всё время', 'Выбрать вручную'])
-# # Определение дат
-# end_date = datetime.now()
-# if period == 'Неделя':
-#     start_date = end_date - pd.Timedelta(days=7)
-# elif period == 'Месяц':
-#     start_date = end_date - pd.Timedelta(days=30)
-# elif period == 'Квартал':
-#     start_date = end_date - pd.Timedelta(days=90)
-# elif period == 'Год':
-#     start_date = end_date - pd.Timedelta(days=365)
-# elif period == 'Всё время':
-#     start_date = datetime(2000, 1, 1)
-# else:
-#     start_date = st.date_input('Выберите начальную дату:', datetime(2020, 1, 1))
-#     end_date = st.date_input('Выберите конечную дату:', datetime.now())
+ticker = 'AAPL'  
+data = yf.download(ticker, start="2020-01-01", end="2025-01-01")
+data = data['Close'].values.reshape(-1, 1)
 
-with st.sidebar:
-    st.header("Input fetuares")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-    tickers = st.text_input("Введите тикеры через запятую (например, AAPL, TSLA, MSFT):", "MSFT")
-    tickers = [ticker.strip() for ticker in tickers.split(",")]  # Разделяем введенные тикеры
-    start_date = st.date_input("Начальная дата", pd.to_datetime("2024-12-12"))
-    end_date = st.date_input("Конечная дата", pd.to_datetime("2025-03-20"))
-    time_frame = st.selectbox("Select time frame",
-                              ( "Weekly", "Monthly", "Quarterly", "Yearly"),
-    )
-    # chart_selection = st.selectbox("Select a chart type",
-    #                                ("Bar", "Area", "Line"))
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_data = scaler.fit_transform(data)
 
-@st.cache_data 
-def load_data(tickers, start_date, end_date):
-    data = pd.DataFrame()
-    data = yf.download(tickers, start=start_date, end=end_date,group_by=tickers, auto_adjust=False)
-    return data
+def create_dataset(data, time_step=60):
+    X, y = [], []
+    for i in range(len(data) - time_step - 1):
+        X.append(data[i:(i + time_step), 0])
+        y.append(data[i + time_step, 0])
+    return np.array(X), np.array(y)
 
-df = load_data(tickers, start_date, end_date)
-df = df.stack(level=0).reset_index()
-df.columns = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+X, y = create_dataset(scaled_data)
+X = X.reshape(X.shape[0], X.shape[1], 1)
 
-# Display the raw data
-if st.checkbox('Show raw data'):
-    st.subheader(f"Raw Data for {tickers}")
-    st.write(df.tail(30))
+train_size = int(len(X) * 0.8)
+X_train, X_test = X[:train_size], X[train_size:]
+y_train, y_test = y[:train_size], y[train_size:]
 
-df=df.set_index('Date')
+model = Sequential()
+model.add(SimpleRNN(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(SimpleRNN(units=50, return_sequences=False))
+model.add(Dense(units=1))
+model.compile(optimizer='adam', loss='mean_squared_error')
 
-st.subheader("All-Time Statistics")
+model.fit(X_train, y_train, epochs=20, batch_size=64)
 
-def calculate_delta(df, column):
-    if len(df) < 2:
-        return 0, 0
-    current_value = df[column].iloc[-1]
-    previous_value = df[column].iloc[-2]
-    delta = current_value - previous_value
-    delta_percent = (delta / previous_value) * 100 if previous_value != 0 else 0
-    return delta, delta_percent
+predictions = model.predict(X_test)
+predictions = scaler.inverse_transform(predictions)
 
-def format_with_commas(number):
-    return f"{number:.2f} $"
+results_df = pd.DataFrame({
+    'Time': range(len(y_test)),  # Временная ось
+    'Real Stock Price': scaler.inverse_transform(y_test.reshape(-1, 1)).flatten(),
+    'Predicted Stock Price': predictions.flatten()
+})
 
-def create_metric_chart(df, column, color, height=150):
-    chart_data = df[[column]].copy()
-    st.bar_chart(chart_data, y=column, color=color, height=height)
+# Создаем график с помощью plotly.express
+fig = px.line(results_df, x='Time', y=['Real Stock Price', 'Predicted Stock Price'],
+              title=f'{ticker} Stock Price Prediction',
+              labels={'value': 'Stock Price', 'variable': 'Legend'},
+              template='plotly_white')
 
+# Настраиваем отображение легенды и осей
+fig.update_layout(
+    xaxis_title='Time',
+    yaxis_title='Stock Price',
+    legend_title='Legend'
+)
 
-def display_metric(col, ticker, value, df, column, color):
-    with col:
-        with st.container(border=True):
-            delta, delta_percent = calculate_delta(df, column)
-            delta_str = f"{delta:+,.0f} ({delta_percent:+.2f}%)"
-            st.metric(ticker, format_with_commas(value), delta=delta_str)
-            # create_metric_chart(df, column, color)
-
-tickers = ['AAPL', 'TSLA', 'MSFT', 'GOOGL', 'CE']
-colors = ['#7D44CF', '#44CF7D', '#CF447D', '#447DCF']  # Фиолетовый, зеленый, розовый, синий
-
-if len(colors) < len(tickers):
-    for i in range(0, len(tickers) - len(colors)):
-        colors.append(colors[i])
-
-# Создание списка метрик с разными цветами
-metrics = [(ticker, "Adj Close", color) for ticker, color in zip(tickers, colors)]
-
-cols = st.columns(len(metrics))
-for col, (ticker, column, color) in zip(cols, metrics):
-    last_value = df[column].iloc[-1]
-    display_metric(col, ticker, last_value, df, column, color)
+# Отображаем график в Streamlit
+st.plotly_chart(fig)

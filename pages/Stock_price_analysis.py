@@ -6,7 +6,7 @@ import plotly.express as px
 import statistics
 
 st.set_page_config(page_title = "Stock Price Analysis", layout="wide") 
-st.logo(image="materilas/images/logo.png", size='large', icon_image="materilas/images/icon.png")
+st.logo(image="materials/images/logo.png", size='large', icon_image="materials/images/icon.png")
 
 # period = st.selectbox('Выберите период:', ['Неделя', 'Месяц', 'Квартал', 'Год', 'Всё время', 'Выбрать вручную'])
 # # Определение дат
@@ -44,16 +44,58 @@ def load_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date,group_by=tickers, auto_adjust=False)
     return data
 
+def calculate_delta(df, column):
+    if len(df) < 2:
+        return 0, 0
+    current_value = df[column].iloc[-1]
+    previous_value = df[column].iloc[-2]
+    delta = current_value - previous_value
+    delta_percent = (delta / previous_value) * 100 if previous_value != 0 else 0
+    return delta, delta_percent
+
+def format_with_commas(number):
+    return f"{number:.2f} $"
+
+def create_metric_chart(df, column, color, height=150):
+    chart_data = df[[column]].copy()
+    st.bar_chart(chart_data, y=column, color=color, height=height)
+
+
+def display_metric(col, ticker, value, df, column, color):
+    with col:
+        with st.container(border=True):
+            delta, delta_percent = calculate_delta(df, column)
+            delta_str = f"{delta:+,.0f} ({delta_percent:+.2f}%)"
+            company_name = yf.Ticker(ticker).info['longName']
+            st.metric(f'{company_name} ({ticker})', format_with_commas(value), delta=delta_str)
+            # create_metric_chart(df, column, color)
+            
 df = load_data(tickers, start_date, end_date)
 df = df.stack(level=0).reset_index()
 df.columns = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 
 # Display the raw data
 if st.checkbox('Show raw data'):
-    st.subheader(f"Raw Data for {tickers}")
+    st.subheader(f"Raw Data for {', '.join(tickers)}")
     st.write(df.tail(30))
 
 df=df.set_index('Date')
+
+st.subheader("All-Time Statistics")
+
+colors = ['#7D44CF', '#44CF7D', '#CF447D', '#447DCF']  # Фиолетовый, зеленый, розовый, синий
+
+if len(colors) < len(tickers):
+    for i in range(0, len(tickers) - len(colors)):
+        colors.append(colors[i])
+
+# Создание списка метрик с разными цветами
+metrics = [(ticker, "Adj Close", color) for ticker, color in zip(tickers, colors)]
+
+cols = st.columns(len(metrics))
+for col, (ticker, column, color) in zip(cols, metrics):
+    last_value = df[column].iloc[-1]
+    display_metric(col, ticker, last_value, df, column, color)
 
 # Создание графиков для каждого тикера
 st.subheader("Распределение цен открытия")

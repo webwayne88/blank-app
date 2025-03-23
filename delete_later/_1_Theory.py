@@ -1,9 +1,9 @@
 import streamlit as st
 import plotly.express as px
 
-image_path = "./materilas/images/"
+image_path = "./materials/images/"
 
-st.logo("materilas/images/logo.png", size='large')
+st.logo("materials/images/logo.png", size='large')
 st.set_page_config(page_title = "Theoretical part") 
 
 st.markdown('''

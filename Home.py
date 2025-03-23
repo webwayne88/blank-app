@@ -1,17 +1,17 @@
 import streamlit as st
 
 
-st.logo("materilas/images/logo.png", size='large')
+st.logo("materials/images/logo.png", size='large')
 st.set_page_config(page_title = "Investio") 
 
-st.markdown("""
-    <style>
-        section[data-testid="stSidebar"][aria-expanded="true"]{
-            display: none;
-        }
-    </style>
+# st.markdown("""
+#     <style>
+#         section[data-testid="stSidebar"][aria-expanded="true"]{
+#             display: none;
+#         }
+#     </style>
             
-    """, unsafe_allow_html=True)
+#     """, unsafe_allow_html=True)
 st.title("💼 Welcome to Investio") 
 st.info('Приложение все еще находится в состоянии разработки', icon="ℹ️")
 st.subheader("Структура:")
@@ -24,7 +24,9 @@ st.page_link("pages/Stock_price_prediction.py", label="Stock price prediction", 
 
 
 
-with open('./materilas/text/description.md', 'r') as f:
+
+
+with open('./materials/text/description.md', 'r') as f:
     markdown_string = f.read()
 
 st.markdown(markdown_string, unsafe_allow_html=True)
