@@ -1,123 +1,93 @@
 import streamlit as st
-import numpy as np
-import pandas as pd
-from datetime import datetime, timedelta
 import yfinance as yf
+import pandas as pd
+import plotly.express as px
 
 st.logo("materilas/images/logo.png", size='large')
-st.set_page_config(page_title = "This is PageOne Geeks.")
- 
-with st.expander('Data'):
-  st.write('**Raw data**')
-  df = pd.read_csv('https://raw.githubusercontent.com/dataprofessor/data/master/penguins_cleaned.csv')
+st.set_page_config(page_title = "Формирование и управление инвестиционным портфелем")
 
-
-  # st.write('**X**')
-  # X_raw = df.drop('species', axis=1)
-  # X_raw
-
-#   st.write('**y**')
-#   y_raw = df.species
-#   y_raw
-
-# with st.expander('Data visualization'):
-#   st.scatter_chart(data=df, x='investment_goal', y='body_mass_g', color='species')
-
-
+# Данные о распределении активов
+portfolio_data = {
+    "Очень консервативный": {"Stocks": 25, "Bonds": 73, "Short-term": 2},
+    "Консервативный": {"Stocks": 45, "Bonds": 53, "Short-term": 2},
+    "Умеренный": {"Stocks": 64, "Bonds": 34, "Short-term": 2},
+    "Агрессивный": {"Stocks": 82, "Bonds": 16, "Short-term": 2},
+    "Очень агрессивный": {"Stocks": 98, "Bonds": 0, "Short-term": 2},
+}
 
 # Input features
 with st.sidebar:
-  st.header('Portoflio settings')
-  risk = st.selectbox('Risk level', ('Very conservative', 'Conservative', 'Moderate', 'Aggressive', 'Very aggressive'))
-  investment_goal = st.slider('Ivestment goal (years)', 1, 10, 3, step=1)
-  investment_amount = st.slider('Шnvestment amount', 1000.0, 100000.0, 10000.0, step=500.0)
-#   flipper_length_mm = st.slider('Flipper length (mm)', 172.0, 231.0, 201.0)
-#   body_mass_g = st.slider('Body mass (g)', 2700.0, 6300.0, 4207.0)
-  # gender = st.selectbox('Gender', ('male', 'female'))
-  
-  # Create a DataFrame for the input features
-#   data = {'risk': risk,
-#           'investment_goal': investment_goal,
-#           'bill_depth_mm': bill_depth_mm,
-#         #   'flipper_length_mm': flipper_length_mm,
-#         #   'body_mass_g': body_mass_g,
-#           'sex': gender}
-#   input_df = pd.DataFrame(data, index=[0])
-#   input_penguins = pd.concat([input_df, X_raw], axis=0)
+  st.header('Настройки портфеля')
+  investment_amount = st.number_input("Сумма инвестиций ($)", min_value=100, value=1000)
+  investment_period = st.number_input("Срок инвестиций (лет)", min_value=1, value=5)
+  portfolio_type = st.selectbox("Выберите тип портфеля", list(portfolio_data.keys()))
+  # risk = st.selectbox('Уровень риска', ('Очень консервативный', 'Консервативный', 'Умеренный', 'Агрессивный', 'Очень агрессивный'))
 
-# with st.expander('Input features'):
-#   st.write('**Input penguin**')
-#   input_df
-#   st.write('**Combined penguins data**')
-#   input_penguins
+# Заголовок приложения
+st.title("Формирование и управление инвестиционным портфелем")
 
+#Получение данных для выбранного портфеля
+allocations = portfolio_data[portfolio_type]
 
-# Data preparation
-# Encode X
-# encode = ['island', 'sex']
-# df_penguins = pd.get_dummies(input_penguins, prefix=encode)
+# Расчет распределения активов
+stocks_allocation = allocations["Stocks"] / 100 * investment_amount
+bonds_allocation = allocations["Bonds"] / 100 * investment_amount
+short_term_allocation = allocations["Short-term"] / 100 * investment_amount
 
-# X = df_penguins[1:]
-# input_row = df_penguins[:1]
+# Таблица с составленным портфелем
+portfolio_table = pd.DataFrame({
+    "Актив": ["Акции", "Облигации", "Краткосрочные инструменты"],
+    "Распределение (%)": [allocations["Stocks"], allocations["Bonds"], allocations["Short-term"]],
+    "Сумма ($)": [stocks_allocation, bonds_allocation, short_term_allocation],
+})
 
-# # Encode y
-# target_mapper = {'Adelie': 0,
-#                  'Chinstrap': 1,
-#                  'Gentoo': 2}
-# def target_encode(val):
-#   return target_mapper[val]
+# Отображение таблицы
+st.subheader("Состав портфеля")
+st.write(portfolio_table)
 
-# y = y_raw.apply(target_encode)
+# Загрузка исторических данных для расчета доходности
+@st.cache_data  # Кэширование данных для ускорения работы
+def get_historical_data():
+    stocks_data = yf.download("SPY", period="max")  # Индекс S&P 500 для акций
+    bonds_data = yf.download("AGG", period="max")  # ETF для облигаций
+    short_term_data = yf.download("SHY", period="max")  # ETF для краткосрочных инструментов
+    return stocks_data, bonds_data, short_term_data
 
-# with st.expander('Data preparation'):
-#   st.write('**Encoded X (input penguin)**')
-#   input_row
-#   st.write('**Encoded y**')
-#   y
+stocks_data, bonds_data, short_term_data = get_historical_data()
 
+# Расчет годовой доходности для каждого актива
+stocks_returns = stocks_data["Close"].pct_change().dropna().mean() * 252  # Годовая доходность акций
+bonds_returns = bonds_data["Close"].pct_change().dropna().mean() * 252  # Годовая доходность облигаций
+short_term_returns = short_term_data["Close"].pct_change().dropna().mean() * 252  # Годовая доходность краткосрочных инструментов
 
-# Model training and inference
-## Train the ML model
-# clf = RandomForestClassifier()
-# clf.fit(X, y)
+# Расчет доходности портфеля
+portfolio_return = (
+    (stocks_returns[0] * allocations["Stocks"] / 100) +
+    (bonds_returns[0] * allocations["Bonds"] / 100) +
+    (short_term_returns[0] * allocations["Short-term"] / 100)
+)
 
-## Apply model to make predictions
-# prediction = clf.predict(input_row)
-# prediction_proba = clf.predict_proba(input_row)
+# Прогнозируемая доходность за выбранный срок
+future_value = investment_amount * (1 + portfolio_return) ** investment_period
 
-# df_prediction_proba = pd.DataFrame(prediction_proba)
-# df_prediction_proba.columns = ['Adelie', 'Chinstrap', 'Gentoo']
-# df_prediction_proba.rename(columns={0: 'Adelie',
-#                                  1: 'Chinstrap',
-#                                  2: 'Gentoo'})
-
-# Display predicted species
-# st.subheader('Predicted Species')
-# st.dataframe(df_prediction_proba,
-#              column_config={
-#                'Adelie': st.column_config.ProgressColumn(
-#                  'Adelie',
-#                  format='%f',
-#                  width='medium',
-#                  min_value=0,
-#                  max_value=1
-#                ),
-#                'Chinstrap': st.column_config.ProgressColumn(
-#                  'Chinstrap',
-#                  format='%f',
-#                  width='medium',
-#                  min_value=0,
-#                  max_value=1
-#                ),
-#                'Gentoo': st.column_config.ProgressColumn(
-#                  'Gentoo',
-#                  format='%f',
-#                  width='medium',
-#                  min_value=0,
-#                  max_value=1
-#                ),
-#              }, hide_index=True)
+# Отображение результатов
+st.subheader("Расчетная доходность портфеля")
+st.write(f"Годовая доходность портфеля: {portfolio_return * 100:.2f}%")
+if investment_period % 10 == 1:
+  st.write(f"Прогнозируемая стоимость портфеля через {investment_period} год: {future_value:.2f} $")
+elif investment_period % 10 < 5:
+  st.write(f"Прогнозируемая стоимость портфеля через {investment_period} года: {future_value:.2f} $")
+else:
+  st.write(f"Прогнозируемая стоимость портфеля через {investment_period} лет: {future_value:.2f} $")
+# График распределения активов
+st.subheader("Распределение активов")
+fig = px.pie(
+    portfolio_table,
+    values="Сумма ($)",
+    names="Актив",
+    color_discrete_sequence=px.colors.sequential.Purp_r,
+)
+fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+st.plotly_chart(fig)
 
 
-# penguins_species = np.array(['Adelie', 'Chinstrap', 'Gentoo'])
-# st.success(str(penguins_species[prediction][0]))

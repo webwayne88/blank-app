@@ -1,186 +1,98 @@
 import streamlit as st
 import yfinance as yf
+from datetime import datetime, timedelta
 import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import layers
-from copy import deepcopy
+import plotly.express as px
+import statistics
 
-df = pd.read_csv('MSFT.csv')
-df = df[['Date', 'Close']]
-df['Date']
+st.set_page_config(page_title = "Stock Price Analysis", layout="wide") 
+st.logo(image="materilas/images/logo.png", size='large', icon_image="materilas/images/icon.png")
 
-def str_to_datetime(s):
-  split = s.split('-')
-  year, month, day = int(split[0]), int(split[1]), int(split[2])
-  return datetime.datetime(year=year, month=month, day=day)
+# period = st.selectbox('Выберите период:', ['Неделя', 'Месяц', 'Квартал', 'Год', 'Всё время', 'Выбрать вручную'])
+# # Определение дат
+# end_date = datetime.now()
+# if period == 'Неделя':
+#     start_date = end_date - pd.Timedelta(days=7)
+# elif period == 'Месяц':
+#     start_date = end_date - pd.Timedelta(days=30)
+# elif period == 'Квартал':
+#     start_date = end_date - pd.Timedelta(days=90)
+# elif period == 'Год':
+#     start_date = end_date - pd.Timedelta(days=365)
+# elif period == 'Всё время':
+#     start_date = datetime(2000, 1, 1)
+# else:
+#     start_date = st.date_input('Выберите начальную дату:', datetime(2020, 1, 1))
+#     end_date = st.date_input('Выберите конечную дату:', datetime.now())
 
-datetime_object = str_to_datetime('1986-03-19')
-datetime_object
+with st.sidebar:
+    st.header("Input fetuares")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    tickers = st.text_input("Введите тикеры через запятую (например, AAPL, TSLA, MSFT):", "MSFT")
+    tickers = [ticker.strip() for ticker in tickers.split(",")]  # Разделяем введенные тикеры
+    start_date = st.date_input("Начальная дата", pd.to_datetime("2024-12-12"))
+    end_date = st.date_input("Конечная дата", pd.to_datetime("2025-03-20"))
+    time_frame = st.selectbox("Select time frame",
+                              ( "Weekly", "Monthly", "Quarterly", "Yearly"),
+    )
+    # chart_selection = st.selectbox("Select a chart type",
+    #                                ("Bar", "Area", "Line"))
 
-df['Date'] = df['Date'].apply(str_to_datetime)
-df['Date']
+@st.cache_data 
+def load_data(tickers, start_date, end_date):
+    data = pd.DataFrame()
+    data = yf.download(tickers, start=start_date, end=end_date,group_by=tickers, auto_adjust=False)
+    return data
 
-df.index = df.pop('Date')
+df = load_data(tickers, start_date, end_date)
+df = df.stack(level=0).reset_index()
+df.columns = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 
-plt.plot(df.index, df['Close'])
+# Display the raw data
+if st.checkbox('Show raw data'):
+    st.subheader(f"Raw Data for {tickers}")
+    st.write(df.tail(30))
 
-def df_to_windowed_df(dataframe, first_date_str, last_date_str, n=3):
-  first_date = str_to_datetime(first_date_str)
-  last_date  = str_to_datetime(last_date_str)
+df=df.set_index('Date')
 
-  target_date = first_date
+st.subheader("All-Time Statistics")
 
-  dates = []
-  X, Y = [], []
+def calculate_delta(df, column):
+    if len(df) < 2:
+        return 0, 0
+    current_value = df[column].iloc[-1]
+    previous_value = df[column].iloc[-2]
+    delta = current_value - previous_value
+    delta_percent = (delta / previous_value) * 100 if previous_value != 0 else 0
+    return delta, delta_percent
 
-  last_time = False
-  while True:
-    df_subset = dataframe.loc[:target_date].tail(n+1)
+def format_with_commas(number):
+    return f"{number:.2f} $"
 
-    if len(df_subset) != n+1:
-      print(f'Error: Window of size {n} is too large for date {target_date}')
-      return
-
-    values = df_subset['Close'].to_numpy()
-    x, y = values[:-1], values[-1]
-
-    dates.append(target_date)
-    X.append(x)
-    Y.append(y)
-
-    next_week = dataframe.loc[target_date:target_date+datetime.timedelta(days=7)]
-    next_datetime_str = str(next_week.head(2).tail(1).index.values[0])
-    next_date_str = next_datetime_str.split('T')[0]
-    year_month_day = next_date_str.split('-')
-    year, month, day = year_month_day
-    next_date = datetime.datetime(day=int(day), month=int(month), year=int(year))
-
-    if last_time:
-      break
-
-    target_date = next_date
-
-    if target_date == last_date:
-      last_time = True
-
-  ret_df = pd.DataFrame({})
-  ret_df['Target Date'] = dates
-
-  X = np.array(X)
-  for i in range(0, n):
-    X[:, i]
-    ret_df[f'Target-{n-i}'] = X[:, i]
-
-  ret_df['Target'] = Y
-
-  return ret_df
-
-# Start day second time around: '2021-03-25'
-windowed_df = df_to_windowed_df(df,
-                                '2021-03-25',
-                                '2022-03-23',
-                                n=3)
-windowed_df
-
-def windowed_df_to_date_X_y(windowed_dataframe):
-  df_as_np = windowed_dataframe.to_numpy()
-
-  dates = df_as_np[:, 0]
-
-  middle_matrix = df_as_np[:, 1:-1]
-  X = middle_matrix.reshape((len(dates), middle_matrix.shape[1], 1))
-
-  Y = df_as_np[:, -1]
-
-  return dates, X.astype(np.float32), Y.astype(np.float32)
-
-dates, X, y = windowed_df_to_date_X_y(windowed_df)
-
-dates.shape, X.shape, y.shape
-
-q_80 = int(len(dates) * .8)
-q_90 = int(len(dates) * .9)
-
-dates_train, X_train, y_train = dates[:q_80], X[:q_80], y[:q_80]
-
-dates_val, X_val, y_val = dates[q_80:q_90], X[q_80:q_90], y[q_80:q_90]
-dates_test, X_test, y_test = dates[q_90:], X[q_90:], y[q_90:]
-
-plt.plot(dates_train, y_train)
-plt.plot(dates_val, y_val)
-plt.plot(dates_test, y_test)
-
-plt.legend(['Train', 'Validation', 'Test'])
-
-model = Sequential([layers.Input((3, 1)),
-                    layers.LSTM(64),
-                    layers.Dense(32, activation='relu'),
-                    layers.Dense(32, activation='relu'),
-                    layers.Dense(1)])
-
-model.compile(loss='mse',
-              optimizer=Adam(learning_rate=0.001),
-              metrics=['mean_absolute_error'])
-
-model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100)
-
-train_predictions = model.predict(X_train).flatten()
-
-plt.plot(dates_train, train_predictions)
-plt.plot(dates_train, y_train)
-plt.legend(['Training Predictions', 'Training Observations'])
-
-val_predictions = model.predict(X_val).flatten()
-
-plt.plot(dates_val, val_predictions)
-plt.plot(dates_val, y_val)
-plt.legend(['Validation Predictions', 'Validation Observations'])
-
-test_predictions = model.predict(X_test).flatten()
-
-plt.plot(dates_test, test_predictions)
-plt.plot(dates_test, y_test)
-plt.legend(['Testing Predictions', 'Testing Observations'])
-
-plt.plot(dates_train, train_predictions)
-plt.plot(dates_train, y_train)
-plt.plot(dates_val, val_predictions)
-plt.plot(dates_val, y_val)
-plt.plot(dates_test, test_predictions)
-plt.plot(dates_test, y_test)
-plt.legend(['Training Predictions',
-            'Training Observations',
-            'Validation Predictions',
-            'Validation Observations',
-            'Testing Predictions',
-            'Testing Observations'])
+def create_metric_chart(df, column, color, height=150):
+    chart_data = df[[column]].copy()
+    st.bar_chart(chart_data, y=column, color=color, height=height)
 
 
+def display_metric(col, ticker, value, df, column, color):
+    with col:
+        with st.container(border=True):
+            delta, delta_percent = calculate_delta(df, column)
+            delta_str = f"{delta:+,.0f} ({delta_percent:+.2f}%)"
+            st.metric(ticker, format_with_commas(value), delta=delta_str)
+            # create_metric_chart(df, column, color)
 
-recursive_predictions = []
-recursive_dates = np.concatenate([dates_val, dates_test])
+tickers = ['AAPL', 'TSLA', 'MSFT', 'GOOGL', 'CE']
+colors = ['#7D44CF', '#44CF7D', '#CF447D', '#447DCF']  # Фиолетовый, зеленый, розовый, синий
 
-for target_date in recursive_dates:
-  last_window = deepcopy(X_train[-1])
-  next_prediction = model.predict(np.array([last_window])).flatten()
-  recursive_predictions.append(next_prediction)
-  last_window[-1] = next_prediction
+if len(colors) < len(tickers):
+    for i in range(0, len(tickers) - len(colors)):
+        colors.append(colors[i])
 
-plt.plot(dates_train, train_predictions)
-plt.plot(dates_train, y_train)
-plt.plot(dates_val, val_predictions)
-plt.plot(dates_val, y_val)
-plt.plot(dates_test, test_predictions)
-plt.plot(dates_test, y_test)
-plt.plot(recursive_dates, recursive_predictions)
-plt.legend(['Training Predictions',
-            'Training Observations',
-            'Validation Predictions',
-            'Validation Observations',
-            'Testing Predictions',
-            'Testing Observations',
-            'Recursive Predictions'])
+# Создание списка метрик с разными цветами
+metrics = [(ticker, "Adj Close", color) for ticker, color in zip(tickers, colors)]
 
+cols = st.columns(len(metrics))
+for col, (ticker, column, color) in zip(cols, metrics):
+    last_value = df[column].iloc[-1]
+    display_metric(col, ticker, last_value, df, column, color)

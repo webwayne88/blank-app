@@ -22,6 +22,8 @@ st.page_link("pages/Portfolio_optimization.py", label="Portfolio optimization", 
 st.page_link("pages/Stock_price_analysis.py", label="Stock price analysis", icon="📊")
 st.page_link("pages/Stock_price_prediction.py", label="Stock price prediction", icon="📉")
 
+
+
 with open('./materilas/text/description.md', 'r') as f:
     markdown_string = f.read()
 
