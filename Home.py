@@ -3,7 +3,7 @@ import streamlit as st
 
 st.logo("materials/images/logo.png", size='large')
 st.set_page_config(page_title = "Investio") 
-
+st.session_state.sidebar_state = 'collapsed'
 # st.markdown("""
 #     <style>
 #         section[data-testid="stSidebar"][aria-expanded="true"]{
@@ -18,12 +18,9 @@ st.subheader("Структура:")
 # st.page_link("pages/Theory.py", label="Theory", icon="📄")
 # st.page_link("pages/Practice.py", label="Practice", icon="💻")
 # st.page_link("pages/Guide.py", label="Guide", icon="📘")
-st.page_link("pages/Portfolio_optimization.py", label="Portfolio optimization", icon="💼")
-st.page_link("pages/Stock_price_analysis.py", label="Stock price analysis", icon="📊")
-st.page_link("pages/Stock_price_prediction.py", label="Stock price prediction", icon="📉")
-
-
-
+# st.page_link("pages/Portfolio_optimization.py", label="Portfolio optimization", icon="💼")
+# st.page_link("pages/Stock_price_analysis.py", label="Stock price analysis", icon="📊")
+# st.page_link("pages/Stock_price_prediction.py", label="Stock price prediction", icon="📉")
 
 
 with open('./materials/text/description.md', 'r') as f:

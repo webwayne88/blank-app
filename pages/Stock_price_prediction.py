@@ -1,66 +1,92 @@
 import streamlit as st
 import yfinance as yf
-from datetime import datetime, timedelta
-import pandas as pd
-import plotly.express as px
 import numpy as np
+import pandas as pd
+import joblib
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, SimpleRNN
+import datetime
 
-st.set_page_config(page_title = "Stock Price Analysis", layout="wide") 
-st.logo(image="materials/images/logo.png", size='large', icon_image="materials/images/icon.png")
 
-ticker = 'AAPL'  
-data = yf.download(ticker, start="2020-01-01", end="2025-01-01")
-data = data['Close'].values.reshape(-1, 1)
+st.logo("materials/images/logo.png", size='large')
+st.set_page_config(page_title="LSTM Прогноз Акции", layout="centered")
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-scaled_data = scaler.fit_transform(data)
+st.title("📈 Прогноз стоимости акции с помощью LSTM")
+st.write("Эта модель использует LSTM для прогнозирования цены закрытия на следующую неделю.")
 
-def create_dataset(data, time_step=60):
-    X, y = [], []
-    for i in range(len(data) - time_step - 1):
-        X.append(data[i:(i + time_step), 0])
-        y.append(data[i + time_step, 0])
-    return np.array(X), np.array(y)
+with st.sidebar:
+    st.header("Параметры")
+    ticker = st.text_input("Тикер акции (например AAPL):", "AAPL").upper()
+    n_days = st.slider("Дней для прогноза:", 7, 30, 7)
+    button = st.button("🔍 Сделать прогноз")
 
-X, y = create_dataset(scaled_data)
-X = X.reshape(X.shape[0], X.shape[1], 1)
+# Параметры
+window_size = 60
 
-train_size = int(len(X) * 0.8)
-X_train, X_test = X[:train_size], X[train_size:]
-y_train, y_test = y[:train_size], y[train_size:]
+# Загрузка модели и скейлера
+@st.cache_resource
+def load_model_and_scaler():
+    model = load_model("models/models/lstm_stock_forecast.h5", compile=False)
+    scaler = joblib.load("models/models/scaler.pkl")
+    return model, scaler
 
-model = Sequential()
-model.add(SimpleRNN(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-model.add(SimpleRNN(units=50, return_sequences=False))
-model.add(Dense(units=1))
-model.compile(optimizer='adam', loss='mean_squared_error')
+model, scaler = load_model_and_scaler()
 
-model.fit(X_train, y_train, epochs=20, batch_size=64)
+# Загрузка данных
+@st.cache_data
+def load_data(ticker):
+    df = yf.download(ticker, start='2015-01-01', end=datetime.datetime.today())
+    return df[['Close']]
 
-predictions = model.predict(X_test)
-predictions = scaler.inverse_transform(predictions)
 
-results_df = pd.DataFrame({
-    'Time': range(len(y_test)),  # Временная ось
-    'Real Stock Price': scaler.inverse_transform(y_test.reshape(-1, 1)).flatten(),
-    'Predicted Stock Price': predictions.flatten()
-})
+if button:
+    with st.spinner("Загружаем данные и делаем прогноз..."):
+        try:
+            df = load_data(ticker)
+            data = df[['Close']]
+            scaled_data = scaler.transform(data)
 
-# Создаем график с помощью plotly.express
-fig = px.line(results_df, x='Time', y=['Real Stock Price', 'Predicted Stock Price'],
-              title=f'{ticker} Stock Price Prediction',
-              labels={'value': 'Stock Price', 'variable': 'Legend'},
-              template='plotly_white')
+            # Подготовка последней последовательности
+            last_sequence = scaled_data[-window_size:]
+            last_sequence = last_sequence.reshape((1, window_size, 1))
 
-# Настраиваем отображение легенды и осей
-fig.update_layout(
-    xaxis_title='Time',
-    yaxis_title='Stock Price',
-    legend_title='Legend'
-)
+            # Прогноз
+            prediction_scaled = model.predict(last_sequence)
+            prediction = scaler.inverse_transform(prediction_scaled).flatten()
 
-# Отображаем график в Streamlit
-st.plotly_chart(fig)
+            # Даты прогноза
+            forecast_dates = pd.date_range(start=df.index[-7] + pd.Timedelta(days=1), periods=n_days)
+            forecast_df = pd.DataFrame({'Date': forecast_dates, 'Forecast': prediction})
+            forecast_df.set_index('Date', inplace=True)
+
+            # График
+            st.subheader("📊 График цены и прогноза")
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(data[-30:], label='Исторические данные')
+            ax.plot(forecast_df, label='Прогноз', linestyle='--')
+            ax.set_title(f'Прогноз стоимости акции {ticker} на {n_days} дней')
+            ax.set_xlabel("Дата")
+            ax.set_ylabel("Цена")
+            ax.grid(True)
+            ax.legend()
+            st.pyplot(fig)
+
+            # Таблица
+            st.subheader("🧾 Прогнозируемые значения")
+            st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
+
+            # Анализ тренда
+            change = prediction[-1] - prediction[0]
+            percent_change = (change / prediction[0]) * 100
+            trend = "📈 Восходящий" if change > 0 else "📉 Нисходящий" if change < 0 else "➡️ Стабильный"
+
+            st.subheader("📌 Анализ тренда")
+            st.markdown(f"""
+            - Тренд: **{trend}**
+            - Начальная цена прогноза: **${prediction[0]:.2f}**
+            - Конечная цена прогноза: **${prediction[-1]:.2f}**
+            - Изменение: **${change:.2f} ({percent_change:.2f}%)**
+            """)
+        except Exception as e:
+            st.error(f"Ошибка при прогнозе: {e}")
